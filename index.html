@@ -504,14 +504,28 @@ async function loadZip(file) {
     for (const [name, entry] of Object.entries(zip.files)) {
       if (!entry.dir) zipFiles[name] = await entry.async('uint8array');
     }
-    // find _chat.txt (may be in subfolder)
-    const chatKey = Object.keys(zipFiles).find(k => k.endsWith('_chat.txt'));
-    if (!chatKey) throw new Error('Arquivo _chat.txt não encontrado no ZIP.');
+    // Encontra o arquivo de chat dentro do ZIP.
+    // Prioridade: _chat.txt → qualquer .txt com mensagens do WhatsApp → qualquer .txt
+    const allKeys = Object.keys(zipFiles);
+    let chatKey = allKeys.find(k => k.endsWith('_chat.txt'));
+    if (!chatKey) {
+      // Alguns exports (sem mídia, iOS, versões novas) usam nome diferente
+      const txts = allKeys.filter(k => k.toLowerCase().endsWith('.txt'));
+      // Pega o .txt que contenha o padrão de mensagem WhatsApp
+      chatKey = txts.find(k => {
+        const sample = new TextDecoder('utf-8').decode(zipFiles[k].slice(0, 200));
+        return /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(sample);
+      }) || txts[0];
+    }
+    if (!chatKey) throw new Error(
+      'Nenhum arquivo de chat encontrado no ZIP.\n' +
+      'Certifique-se de enviar o ZIP exportado diretamente pelo WhatsApp.'
+    );
     const raw = new TextDecoder('utf-8').decode(zipFiles[chatKey]);
     messages = parseChat(raw);
     senders  = [...new Set(messages.filter(m => m.type === 'msg').map(m => m.sender))];
     // Debug: list all files found in ZIP and all attachment texts detected
-    const mediaFiles = Object.keys(zipFiles).filter(k => !k.endsWith('_chat.txt'));
+    const mediaFiles = allKeys.filter(k => k !== chatKey);
     console.log('[WA Viewer] Arquivos no ZIP:', mediaFiles);
     const attachMsgs = messages.filter(m => m.type==='msg' && parseAttachment(
       m.text.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g,'').trim()
