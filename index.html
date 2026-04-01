@@ -210,39 +210,8 @@
       word-break: break-word;
       overflow: visible;
     }
-    .bubble-wrap.out .bubble {
-      background: #005c4b;
-      border-top-right-radius: 0;        /* sharp corner where tail meets */
-    }
-    .bubble-wrap.in .bubble {
-      background: #202c33;
-      border-top-left-radius: 0;         /* sharp corner where tail meets */
-    }
-
-    /* grouped: fully rounded on the "tail" side too */
-    .bubble-wrap.out.grouped .bubble  { border-top-right-radius: 7.5px; }
-    .bubble-wrap.in.grouped  .bubble  { border-top-left-radius:  7.5px; }
-
-    /* tail – outgoing (right side) */
-    .bubble-wrap.out:not(.grouped) .bubble::after {
-      content: '';
-      position: absolute;
-      top: 0; right: -8px;
-      width: 0; height: 0;
-      border-style: solid;
-      border-width: 8px 0 0 8px;
-      border-color: transparent transparent transparent #005c4b;
-    }
-    /* tail – incoming (left side) */
-    .bubble-wrap.in:not(.grouped) .bubble::before {
-      content: '';
-      position: absolute;
-      top: 0; left: -8px;
-      width: 0; height: 0;
-      border-style: solid;
-      border-width: 8px 8px 0 0;
-      border-color: transparent #202c33 transparent transparent;
-    }
+    .bubble-wrap.out .bubble { background: #005c4b; }
+    .bubble-wrap.in  .bubble { background: #202c33; }
 
     /* sender name inside bubble */
     .bubble .sender {
