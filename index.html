@@ -186,46 +186,59 @@
     /* bubble wrapper */
     .bubble-wrap {
       display: flex;
-      margin: 1px 8px;
+      /* horizontal padding reserves space so tails never clip */
+      padding: 0 10px 0 10px;
+      margin: 1px 0;
     }
     .bubble-wrap.out { justify-content: flex-end; }
     .bubble-wrap.in  { justify-content: flex-start; }
 
+    /* tighten gap between grouped messages (same sender in a row) */
+    .bubble-wrap.grouped { margin-top: 0; }
+
     /* bubble */
     .bubble {
-      max-width: 65%;
-      min-width: 80px;
-      border-radius: 8px;
-      padding: 6px 8px 4px;
+      max-width: 72%;
+      min-width: 90px;
+      border-radius: 7.5px;
+      padding: 6px 7px 4px 9px;
       position: relative;
       word-wrap: break-word;
       word-break: break-word;
+      overflow: visible;
     }
     .bubble-wrap.out .bubble {
       background: #005c4b;
-      border-top-right-radius: 2px;
+      border-top-right-radius: 0;        /* sharp corner where tail meets */
     }
     .bubble-wrap.in .bubble {
       background: #202c33;
-      border-top-left-radius: 2px;
+      border-top-left-radius: 0;         /* sharp corner where tail meets */
     }
 
-    /* tail */
-    .bubble-wrap.out .bubble::after {
+    /* grouped: fully rounded on the "tail" side too */
+    .bubble-wrap.out.grouped .bubble  { border-top-right-radius: 7.5px; }
+    .bubble-wrap.in.grouped  .bubble  { border-top-left-radius:  7.5px; }
+
+    /* tail – outgoing (right side) */
+    .bubble-wrap.out:not(.grouped) .bubble::after {
       content: '';
       position: absolute;
       top: 0; right: -8px;
-      border-width: 8px 0 0 8px;
+      width: 0; height: 0;
       border-style: solid;
-      border-color: #005c4b transparent;
+      border-width: 8px 0 0 8px;
+      border-color: transparent transparent transparent #005c4b;
     }
-    .bubble-wrap.in .bubble::before {
+    /* tail – incoming (left side) */
+    .bubble-wrap.in:not(.grouped) .bubble::before {
       content: '';
       position: absolute;
       top: 0; left: -8px;
-      border-width: 8px 8px 0 0;
+      width: 0; height: 0;
       border-style: solid;
-      border-color: #202c33 transparent;
+      border-width: 8px 8px 0 0;
+      border-color: transparent #202c33 transparent transparent;
     }
 
     /* sender name inside bubble */
@@ -252,8 +265,9 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      gap: 4px;
+      gap: 3px;
       margin-top: 2px;
+      line-height: 1;
     }
     .bubble .meta .time {
       font-size: .68rem;
@@ -262,7 +276,8 @@
     }
     .bubble .meta .tick {
       color: #53bdeb;
-      font-size: .75rem;
+      font-size: .78rem;
+      letter-spacing: -2px;   /* sobreposição dos dois checks como no WA */
     }
 
     /* edited tag */
@@ -605,15 +620,23 @@ function renderChat() {
   const container = $('messages');
   container.innerHTML = '';
 
-  let lastDate = '';
-  for (const msg of messages) {
-    // date separator
+  let lastDate   = '';
+  let lastSender = '';
+  for (let i = 0; i < messages.length; i++) {
+    const msg  = messages[i];
+    const next = messages[i + 1];
+    // date separator — resets grouping
     if (msg.date !== lastDate) {
-      lastDate = msg.date;
+      lastDate   = msg.date;
+      lastSender = '';
       container.appendChild(makeDateSep(msg.date));
     }
-    if (msg.type === 'sys') { container.appendChild(makeSys(msg)); continue; }
-    container.appendChild(makeBubble(msg));
+    if (msg.type === 'sys') { lastSender = ''; container.appendChild(makeSys(msg)); continue; }
+    const grouped = (msg.type === 'msg' && msg.sender === lastSender);
+    // hide tail when the NEXT message is from the same sender (tail only on last of a group)
+    const hideTail = (msg.type === 'msg' && next && next.type === 'msg' && next.sender === msg.sender && next.date === msg.date);
+    container.appendChild(makeBubble(msg, grouped, hideTail));
+    lastSender = msg.sender;
   }
 
   // scroll to bottom
@@ -670,16 +693,17 @@ const EDITED_RE = /\u200e?<Mensagem editada>$/;
 // Mensagem de sistema do WhatsApp (criptografia, etc.)
 const CRYPTO_RE = /mensagens e liga[cç][oõ]es são protegidas|end-to-end encrypted/i;
 
-function makeBubble(msg) {
+function makeBubble(msg, grouped = false, hideTail = false) {
   const isMine = msg.sender === mySelf;
   const wrap = document.createElement('div');
-  wrap.className = 'bubble-wrap ' + (isMine ? 'out' : 'in');
+  const groupedClass = (grouped || hideTail) ? ' grouped' : '';
+  wrap.className = 'bubble-wrap ' + (isMine ? 'out' : 'in') + groupedClass;
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
 
-  // sender name (group / incoming)
-  if (!isMine) {
+  // sender name: only on first message in a group
+  if (!isMine && !grouped) {
     const s = document.createElement('div');
     s.className = 'sender';
     s.textContent = msg.sender.replace(/^~/,'');
@@ -922,7 +946,7 @@ async function saveConversation() {
       return b64map[filename] || b64map[Object.keys(b64map).find(k => k === filename || k.endsWith('/' + filename))] || null;
     }
 
-    function buildMsgHtml(msg) {
+    function buildMsgHtml(msg, grouped = false, hideTail = false) {
       if (msg.type === 'sys') return `<div class="sys-msg"><span>${escHtml(msg.text)}</span></div>`;
       const isMine = msg.sender === mySelf;
       let rawText = msg.text.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, '').trim();
@@ -934,7 +958,8 @@ async function saveConversation() {
       const omit = OMITTED_RE.test(rawText);
       const side = isMine ? 'out' : 'in';
       let inner  = '';
-      if (!isMine) inner += `<div class="sender">${escHtml(msg.sender.replace(/^~/,''))}</div>`;
+      // sender name only on first message of a group
+      if (!isMine && !grouped) inner += `<div class="sender">${escHtml(msg.sender.replace(/^~/,''))}</div>`;
       if (att) {
         const uri = mediaUri(att.filename);
         const iExt = ['jpg','jpeg','png','gif','webp'];
@@ -961,22 +986,31 @@ async function saveConversation() {
       const editTag = isEdited ? `<span class="edited-tag">editada</span>` : '';
       const tick    = isMine   ? `<span class="tick">✓✓</span>` : '';
       inner += `<div class="meta">${editTag}<span class="time">${msg.time.slice(0,5)}</span>${tick}</div>`;
-      return `<div class="bubble-wrap ${side}"><div class="bubble">${inner}</div></div>`;
+      const groupedClass = (grouped || hideTail) ? ' grouped' : '';
+      return `<div class="bubble-wrap ${side}${groupedClass}"><div class="bubble">${inner}</div></div>`;
     }
 
     // 3. Monta o HTML completo de forma autocontida
-    let bodyHtml = '';
-    let lastDate = '';
-    for (const msg of messages) {
-      if (msg.date !== lastDate) {
-        lastDate = msg.date;
+    let bodyHtml   = '';
+    let lastDate2  = '';
+    let lastSend2  = '';
+    for (let i = 0; i < messages.length; i++) {
+      const msg  = messages[i];
+      const next = messages[i + 1];
+      if (msg.date !== lastDate2) {
+        lastDate2  = msg.date;
+        lastSend2  = '';
         const [d,mo,y] = msg.date.split('/');
         const dt   = new Date(+y,+mo-1,+d);
         const diff = Math.round((new Date()-dt)/86400000);
         const lbl  = diff===0?'Hoje':diff===1?'Ontem':dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
         bodyHtml  += `<div class="date-sep"><span>${lbl}</span></div>`;
       }
-      bodyHtml += buildMsgHtml(msg);
+      if (msg.type === 'sys') { lastSend2 = ''; bodyHtml += buildMsgHtml(msg,false,false); continue; }
+      const grp  = msg.sender === lastSend2;
+      const hide = next && next.type==='msg' && next.sender===msg.sender && next.date===msg.date;
+      bodyHtml  += buildMsgHtml(msg, grp, hide);
+      lastSend2  = msg.sender;
     }
 
     const others = senders.filter(s=>s!==mySelf);
