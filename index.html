@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualizador WhatsApp</title>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111b21;
+      color: #e9edef;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Upload screen ── */
+    #upload-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      text-align: center;
+      padding: 40px;
+    }
+    #upload-screen svg { opacity: .7; }
+    #upload-screen h1 { font-size: 1.5rem; font-weight: 600; color: #00a884; }
+    #upload-screen p  { color: #8696a0; font-size: .95rem; max-width: 360px; line-height: 1.5; }
+
+    #drop-zone {
+      width: 320px;
+      border: 2px dashed #2a3942;
+      border-radius: 16px;
+      padding: 40px 24px;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      background: #1f2c34;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: #00a884;
+      background: #182026;
+    }
+    #drop-zone span { color: #8696a0; font-size: .9rem; }
+    #drop-zone strong { color: #00a884; }
+    #file-input { display: none; }
+
+    /* ── Picker screen ── */
+    #picker-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 40px;
+      text-align: center;
+    }
+    #picker-screen h2 { color: #00a884; font-size: 1.2rem; }
+    #picker-screen p  { color: #8696a0; font-size: .9rem; }
+    .name-btn {
+      background: #1f2c34;
+      border: 1px solid #2a3942;
+      color: #e9edef;
+      padding: 12px 28px;
+      border-radius: 50px;
+      cursor: pointer;
+      font-size: .95rem;
+      transition: background .2s, border-color .2s;
+      width: 100%;
+      max-width: 300px;
+    }
+    .name-btn:hover { background: #2a3942; border-color: #00a884; }
+
+    /* ── Chat screen ── */
+    #chat-screen {
+      display: none;
+      flex-direction: column;
+      width: 100%;
+      max-width: 780px;
+      height: 100vh;
+      background: #0b141a;
+    }
+
+    /* wallpaper */
+    #chat-screen::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath fill='none' stroke='%23182830' stroke-width='1' d='M10 30 Q15 20 20 30 Q25 40 30 30 Q35 20 40 30 Q45 40 50 30'/%3E%3C/svg%3E");
+      opacity: .4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* header */
+    #chat-header {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: #202c33;
+      border-bottom: 1px solid #2a3942;
+      flex-shrink: 0;
+    }
+    #chat-header .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: #00a884;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.1rem; color: #fff; flex-shrink: 0;
+    }
+    #chat-header .info h3 { font-size: .95rem; font-weight: 600; }
+    #chat-header .info small { font-size: .78rem; color: #8696a0; }
+    #back-btn {
+      background: none; border: none; color: #8696a0; cursor: pointer;
+      font-size: 1.2rem; padding: 4px; margin-right: 4px;
+    }
+    #back-btn:hover { color: #e9edef; }
+    #chat-header .spacer { flex: 1; }
+    #save-btn {
+      display: flex; align-items: center; gap: 6px;
+      background: #00a884; border: none; color: #fff;
+      padding: 7px 14px; border-radius: 8px; cursor: pointer;
+      font-size: .82rem; font-weight: 600; white-space: nowrap;
+      transition: background .2s;
+    }
+    #save-btn:hover { background: #008f73; }
+    #save-btn:disabled { background: #2a3942; color: #8696a0; cursor: default; }
+    #save-btn svg { flex-shrink: 0; }
+
+    /* messages area */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      position: relative;
+      z-index: 1;
+    }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: #2a3942; border-radius: 3px; }
+
+    /* date separator */
+    .date-sep {
+      display: flex;
+      justify-content: center;
+      margin: 12px 0 8px;
+    }
+    .date-sep span {
+      background: #182830;
+      color: #8696a0;
+      font-size: .75rem;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+
+    /* system message */
+    .sys-msg {
+      display: flex;
+      justify-content: center;
+      margin: 4px 0;
+    }
+    .sys-msg span {
+      background: #182830;
+      color: #8696a0;
+      font-size: .75rem;
+      padding: 5px 12px;
+      border-radius: 8px;
+      max-width: 80%;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* bubble wrapper */
+    .bubble-wrap {
+      display: flex;
+      margin: 1px 8px;
+    }
+    .bubble-wrap.out { justify-content: flex-end; }
+    .bubble-wrap.in  { justify-content: flex-start; }
+
+    /* bubble */
+    .bubble {
+      max-width: 65%;
+      min-width: 80px;
+      border-radius: 8px;
+      padding: 6px 8px 4px;
+      position: relative;
+      word-wrap: break-word;
+      word-break: break-word;
+    }
+    .bubble-wrap.out .bubble {
+      background: #005c4b;
+      border-top-right-radius: 2px;
+    }
+    .bubble-wrap.in .bubble {
+      background: #202c33;
+      border-top-left-radius: 2px;
+    }
+
+    /* tail */
+    .bubble-wrap.out .bubble::after {
+      content: '';
+      position: absolute;
+      top: 0; right: -8px;
+      border-width: 8px 0 0 8px;
+      border-style: solid;
+      border-color: #005c4b transparent;
+    }
+    .bubble-wrap.in .bubble::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -8px;
+      border-width: 8px 8px 0 0;
+      border-style: solid;
+      border-color: #202c33 transparent;
+    }
+
+    /* sender name inside bubble */
+    .bubble .sender {
+      font-size: .78rem;
+      font-weight: 600;
+      color: #00a884;
+      margin-bottom: 2px;
+    }
+
+    /* message text */
+    .bubble .msg-text {
+      font-size: .92rem;
+      line-height: 1.4;
+      color: #e9edef;
+    }
+    .bubble .msg-text a {
+      color: #53bdeb;
+      word-break: break-all;
+    }
+
+    /* time + status */
+    .bubble .meta {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .bubble .meta .time {
+      font-size: .68rem;
+      color: #8696a0;
+      white-space: nowrap;
+    }
+    .bubble .meta .tick {
+      color: #53bdeb;
+      font-size: .75rem;
+    }
+
+    /* edited tag */
+    .edited-tag {
+      font-size: .68rem;
+      color: #8696a0;
+      font-style: italic;
+    }
+
+    /* media */
+    .bubble-media {
+      max-width: 280px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 4px;
+      cursor: pointer;
+    }
+    .bubble-media img {
+      width: 100%;
+      display: block;
+      border-radius: 6px;
+    }
+    .bubble-media video {
+      width: 100%;
+      display: block;
+      border-radius: 6px;
+      max-height: 280px;
+    }
+
+    /* audio player */
+    .audio-player {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 6px;
+      min-width: 200px;
+    }
+    .audio-player audio { display: none; }
+    .play-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: #00a884;
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: #fff;
+      font-size: 14px;
+    }
+    .play-btn:hover { background: #008f73; }
+    .audio-progress-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .audio-progress {
+      width: 100%;
+      height: 3px;
+      background: #2a3942;
+      border-radius: 2px;
+      cursor: pointer;
+      position: relative;
+    }
+    .audio-progress-fill {
+      height: 100%;
+      background: #00a884;
+      border-radius: 2px;
+      width: 0%;
+      pointer-events: none;
+    }
+    .audio-time { font-size: .68rem; color: #8696a0; }
+
+    /* media placeholder (missing file) */
+    .media-placeholder {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(0,0,0,.2);
+      border-radius: 6px;
+      font-size: .82rem;
+      color: #8696a0;
+      font-style: italic;
+    }
+    .media-placeholder svg { flex-shrink: 0; opacity: .6; }
+
+    /* location */
+    .location-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #53bdeb;
+      font-size: .88rem;
+      text-decoration: none;
+    }
+    .location-link:hover { text-decoration: underline; }
+
+    /* lightbox */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.92);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.active { display: flex; }
+    #lightbox img, #lightbox video {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 8px;
+    }
+    #lightbox-close {
+      position: absolute;
+      top: 16px; right: 20px;
+      background: none; border: none;
+      color: #fff; font-size: 2rem;
+      cursor: pointer; line-height: 1;
+    }
+
+    /* loading */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #2a3942;
+      border-top-color: #00a884;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: #8696a0; font-size: .9rem; }
+  </style>
+</head>
+<body>
+
+<!-- Upload -->
+<div id="upload-screen">
+  <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+    <circle cx="32" cy="32" r="32" fill="#1f2c34"/>
+    <path d="M32 14C22.06 14 14 22.06 14 32s8.06 18 18 18 18-8.06 18-18S41.94 14 32 14zm0 32c-7.73 0-14-6.27-14-14s6.27-14 14-14 14 6.27 14 14-6.27 14-14 14z" fill="#00a884"/>
+    <path d="M38.5 30h-5v-5a1.5 1.5 0 0 0-3 0v5h-5a1.5 1.5 0 0 0 0 3h5v5a1.5 1.5 0 0 0 3 0v-5h5a1.5 1.5 0 0 0 0-3z" fill="#00a884"/>
+  </svg>
+  <h1>Visualizador de Conversa WhatsApp</h1>
+  <p>Faça upload do arquivo ZIP exportado pelo WhatsApp para visualizar a conversa</p>
+
+  <div id="drop-zone">
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="1.5">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    <span>Arraste o arquivo <strong>.zip</strong> aqui<br/>ou clique para selecionar</span>
+    <input type="file" id="file-input" accept=".zip" />
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Carregando conversa…</p>
+</div>
+
+<!-- Picker -->
+<div id="picker-screen">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="1.5">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+  <h2>Quem é você na conversa?</h2>
+  <p>Selecione o seu nome para exibir suas mensagens à direita</p>
+  <div id="name-list"></div>
+</div>
+
+<!-- Chat -->
+<div id="chat-screen">
+  <div id="chat-header">
+    <button id="back-btn" title="Voltar">&#8592;</button>
+    <div class="avatar" id="chat-avatar">?</div>
+    <div class="info">
+      <h3 id="chat-title">Conversa</h3>
+      <small id="chat-sub"></small>
+    </div>
+    <div class="spacer"></div>
+    <button id="save-btn" title="Salvar conversa como HTML">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Salvar
+    </button>
+  </div>
+  <div id="messages"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close">&times;</button>
+  <div id="lightbox-content"></div>
+</div>
+
+<script>
+/* ── helpers ── */
+const $ = id => document.getElementById(id);
+const show = id => { $(id).style.display = 'flex'; };
+const hide = id => { $(id).style.display = 'none'; };
+
+/* ── state ── */
+let zipFiles = {};   // filename → Uint8Array
+let messages = [];
+let senders  = [];
+let mySelf   = '';
+
+/* ── drop zone ── */
+const dropZone = $('drop-zone');
+const fileInput = $('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); loadZip(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadZip(e.target.files[0]); });
+
+/* ── load zip ── */
+async function loadZip(file) {
+  hide('upload-screen');
+  show('loading');
+  try {
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    zipFiles = {};
+    for (const [name, entry] of Object.entries(zip.files)) {
+      if (!entry.dir) zipFiles[name] = await entry.async('uint8array');
+    }
+    // find _chat.txt (may be in subfolder)
+    const chatKey = Object.keys(zipFiles).find(k => k.endsWith('_chat.txt'));
+    if (!chatKey) throw new Error('Arquivo _chat.txt não encontrado no ZIP.');
+    const raw = new TextDecoder('utf-8').decode(zipFiles[chatKey]);
+    messages = parseChat(raw);
+    senders  = [...new Set(messages.filter(m => m.type === 'msg').map(m => m.sender))];
+    // Debug: list all files found in ZIP and all attachment texts detected
+    const mediaFiles = Object.keys(zipFiles).filter(k => !k.endsWith('_chat.txt'));
+    console.log('[WA Viewer] Arquivos no ZIP:', mediaFiles);
+    const attachMsgs = messages.filter(m => m.type==='msg' && parseAttachment(
+      m.text.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g,'').trim()
+    ));
+    console.log('[WA Viewer] Mensagens com anexo detectadas:', attachMsgs.map(m => m.text.trim()));
+  } catch(err) {
+    alert('Erro ao carregar: ' + err.message);
+    hide('loading'); show('upload-screen'); return;
+  }
+  hide('loading');
+  if (senders.length === 1) { mySelf = senders[0]; renderChat(); }
+  else showPicker();
+}
+
+/* ── parse ── */
+// [DD/MM/YYYY, HH:MM:SS] Sender: text  (Android)
+// [DD/MM/YYYY HH:MM:SS] Sender: text   (iOS)
+// ,?\s+ handles both "date, time" and "date time" separators
+const LINE_RE = /^\[(\d{1,2}\/\d{1,2}\/\d{4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?)\]\s(.+?):\s([\s\S]*)$/;
+const SYS_RE  = /^\[(\d{1,2}\/\d{1,2}\/\d{4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?)\]\s(.+)$/;
+
+function parseChat(raw) {
+  // normalize line endings and strip BOM / invisible unicode direction marks
+  const lines = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .split('\n');
+  const result = [];
+  let cur = null;
+
+  for (const rawLine of lines) {
+    // strip leading invisible chars (LRM, RLM, LRE, PDF, etc.)
+    const line = rawLine.replace(/^[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/, '');
+    if (!line.trim()) continue;
+    const m = LINE_RE.exec(line);
+    if (m) {
+      if (cur) result.push(cur);
+      cur = { type: 'msg', date: m[1], time: m[2], sender: m[3].trim(), text: m[4] };
+      continue;
+    }
+    const s = SYS_RE.exec(line);
+    if (s) {
+      if (cur) result.push(cur);
+      cur = { type: 'sys', date: s[1], time: s[2], text: s[3] };
+      continue;
+    }
+    // continuation line
+    if (cur) cur.text += '\n' + line;
+  }
+  if (cur) result.push(cur);
+  return result;
+}
+
+/* ── picker ── */
+function showPicker() {
+  const list = $('name-list');
+  list.innerHTML = '';
+  for (const name of senders) {
+    const btn = document.createElement('button');
+    btn.className = 'name-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => { mySelf = name; hide('picker-screen'); renderChat(); });
+    list.appendChild(btn);
+  }
+  show('picker-screen');
+}
+
+/* ── render ── */
+function renderChat() {
+  // header
+  const others = senders.filter(s => s !== mySelf);
+  const title  = others.length === 1 ? others[0] : (others.length > 1 ? others[0] + ' e outros' : mySelf);
+  $('chat-title').textContent = title;
+  $('chat-sub').textContent   = senders.length + ' participantes';
+  $('chat-avatar').textContent = title.replace(/^~/,'')[0].toUpperCase();
+
+  const container = $('messages');
+  container.innerHTML = '';
+
+  let lastDate = '';
+  for (const msg of messages) {
+    // date separator
+    if (msg.date !== lastDate) {
+      lastDate = msg.date;
+      container.appendChild(makeDateSep(msg.date));
+    }
+    if (msg.type === 'sys') { container.appendChild(makeSys(msg)); continue; }
+    container.appendChild(makeBubble(msg));
+  }
+
+  // scroll to bottom
+  setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
+  show('chat-screen');
+}
+
+function makeDateSep(dateStr) {
+  const el = document.createElement('div');
+  el.className = 'date-sep';
+  const [d,mo,y] = dateStr.split('/');
+  const dt = new Date(+y, +mo-1, +d);
+  const today = new Date();
+  const diff  = Math.round((today - dt) / 86400000);
+  let label = diff === 0 ? 'Hoje' : diff === 1 ? 'Ontem' : dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  el.innerHTML = `<span>${label}</span>`;
+  return el;
+}
+
+function makeSys(msg) {
+  const el = document.createElement('div');
+  el.className = 'sys-msg';
+  el.innerHTML = `<span>${escHtml(msg.text)}</span>`;
+  return el;
+}
+
+// Detects media attachments in all WhatsApp export formats:
+//   <anexado: filename.ext>          Android PT
+//   <attached: filename.ext>         Android EN
+//   filename.ext (arquivo anexado)   formato antigo
+//   filename.ext                     alguns exports iOS
+const MEDIA_EXTS = 'jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|opus|ogg|mp3|aac|m4a|pdf|doc|docx|xls|xlsx|txt|zip';
+function parseAttachment(text) {
+  // Remove any remaining invisible chars inside the text
+  const t = text.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, '').trim();
+
+  // <anexado: nome.ext> ou <attached: nome.ext>  (Android PT/EN)
+  let m = new RegExp('^<(?:anexado|attached):\\s*(.+\\.(' + MEDIA_EXTS + '))\\s*>$','i').exec(t);
+  if (m) return { filename: m[1].trim(), ext: m[2].toLowerCase() };
+
+  // nome.ext (arquivo anexado)  (formato antigo)
+  m = new RegExp('^(.+\\.(' + MEDIA_EXTS + '))\\s*\\(arquivo anexado\\)$','i').exec(t);
+  if (m) return { filename: m[1].trim(), ext: m[2].toLowerCase() };
+
+  // nome.ext sozinho na linha  (alguns exports iOS)
+  m = new RegExp('^([^<\\n]+\\.(' + MEDIA_EXTS + '))$','i').exec(t);
+  if (m) return { filename: m[1].trim(), ext: m[2].toLowerCase() };
+
+  return null;
+}
+const OMITTED_RE = /\(arquivo\s+omitido\)/i;
+const LOC_RE = /^(?:Localização|Location):\s*(https?:\/\/\S+)$/i;
+const EDITED_RE = /\u200e?<Mensagem editada>$/;
+// Mensagem de sistema do WhatsApp (criptografia, etc.)
+const CRYPTO_RE = /mensagens e liga[cç][oõ]es são protegidas|end-to-end encrypted/i;
+
+function makeBubble(msg) {
+  const isMine = msg.sender === mySelf;
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap ' + (isMine ? 'out' : 'in');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  // sender name (group / incoming)
+  if (!isMine) {
+    const s = document.createElement('div');
+    s.className = 'sender';
+    s.textContent = msg.sender.replace(/^~/,'');
+    bubble.appendChild(s);
+  }
+
+  // strip invisible unicode chars (LRM, RLM, LRE, etc.) that WhatsApp injects
+  let rawText = msg.text.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, '').trim();
+
+  // Mensagem de sistema embutida como balão (ex: aviso de criptografia)
+  if (CRYPTO_RE.test(rawText)) {
+    const el = document.createElement('div');
+    el.className = 'sys-msg';
+    el.innerHTML = `<span>${escHtml(rawText)}</span>`;
+    return el;
+  }
+
+  const isEdited = EDITED_RE.test(rawText);
+  if (isEdited) rawText = rawText.replace(EDITED_RE, '').trim();
+
+  // check for media
+  const attachInfo = parseAttachment(rawText);
+  const isOmitted  = OMITTED_RE.test(rawText);
+  const locMatch   = LOC_RE.exec(rawText);
+
+  if (attachInfo) {
+    const { filename, ext } = attachInfo;
+    bubble.appendChild(makeMedia(filename, ext));
+  } else if (isOmitted) {
+    bubble.appendChild(makePlaceholder('arquivo', 'Arquivo não exportado'));
+  } else if (locMatch) {
+    const a = document.createElement('a');
+    a.className = 'location-link';
+    a.href = locMatch[1]; a.target = '_blank';
+    a.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Ver localização`;
+    bubble.appendChild(a);
+  } else {
+    const p = document.createElement('div');
+    p.className = 'msg-text';
+    p.innerHTML = linkify(escHtml(rawText));
+    bubble.appendChild(p);
+  }
+
+  // meta row
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  if (isEdited) {
+    const et = document.createElement('span');
+    et.className = 'edited-tag';
+    et.textContent = 'editada';
+    meta.appendChild(et);
+  }
+  const time = document.createElement('span');
+  time.className = 'time';
+  time.textContent = msg.time.slice(0,5);
+  meta.appendChild(time);
+  if (isMine) {
+    const tick = document.createElement('span');
+    tick.className = 'tick';
+    tick.innerHTML = '&#10003;&#10003;';
+    meta.appendChild(tick);
+  }
+  bubble.appendChild(meta);
+
+  wrap.appendChild(bubble);
+  return wrap;
+}
+
+/* ── media ── */
+function findFile(name) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  // exact match first
+  if (zipFiles[name]) return zipFiles[name];
+  // case-insensitive + strip folder prefix
+  const key = Object.keys(zipFiles).find(k => {
+    const base = k.includes('/') ? k.split('/').pop() : k;
+    return base.toLowerCase() === lower || k.toLowerCase() === lower;
+  });
+  if (key) return zipFiles[key];
+  return null;
+}
+
+function makeMedia(filename, ext) {
+  const data = findFile(filename);
+  if (!data) return makePlaceholder(ext, filename);
+
+  const imageExts = ['jpg','jpeg','png','gif','webp'];
+  const videoExts = ['mp4','mov','avi','mkv'];
+  const audioExts = ['opus','ogg','mp3','aac','m4a'];
+
+  if (imageExts.includes(ext)) return makeImage(data, ext, filename);
+  if (videoExts.includes(ext)) return makeVideo(data, ext, filename);
+  if (audioExts.includes(ext)) return makeAudio(data, ext, filename);
+
+  // generic file
+  const mime = getMime(ext);
+  const blob = new Blob([data], {type: mime});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.target = '_blank';
+  a.className = 'msg-text';
+  a.style.display='flex'; a.style.alignItems='center'; a.style.gap='6px';
+  a.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> ${escHtml(filename)}`;
+  return a;
+}
+
+function makeImage(data, ext, filename) {
+  const blob = new Blob([data], {type: getMime(ext)});
+  const url  = URL.createObjectURL(blob);
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-media';
+  const img = document.createElement('img');
+  img.src = url; img.alt = filename; img.loading = 'lazy';
+  img.addEventListener('click', () => openLightbox('img', url));
+  wrap.appendChild(img);
+  return wrap;
+}
+
+function makeVideo(data, ext, filename) {
+  const blob = new Blob([data], {type: getMime(ext)});
+  const url  = URL.createObjectURL(blob);
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-media';
+  const vid = document.createElement('video');
+  vid.src = url; vid.controls = true; vid.preload = 'metadata';
+  vid.addEventListener('click', e => e.stopPropagation());
+  wrap.appendChild(vid);
+  return wrap;
+}
+
+function makeAudio(data, ext, filename) {
+  const blob = new Blob([data], {type: getMime(ext)});
+  const url  = URL.createObjectURL(blob);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'audio-player';
+
+  const audio = document.createElement('audio');
+  audio.src = url; audio.preload = 'metadata';
+
+  const btn = document.createElement('button');
+  btn.className = 'play-btn';
+  btn.innerHTML = '&#9654;';
+
+  const progWrap = document.createElement('div');
+  progWrap.className = 'audio-progress-wrap';
+
+  const bar = document.createElement('div');
+  bar.className = 'audio-progress';
+  const fill = document.createElement('div');
+  fill.className = 'audio-progress-fill';
+  bar.appendChild(fill);
+
+  const timeEl = document.createElement('span');
+  timeEl.className = 'audio-time';
+  timeEl.textContent = '0:00';
+
+  progWrap.appendChild(bar);
+  progWrap.appendChild(timeEl);
+  wrap.append(audio, btn, progWrap);
+
+  btn.addEventListener('click', () => {
+    if (audio.paused) { audio.play(); btn.innerHTML = '&#9646;&#9646;'; }
+    else              { audio.pause(); btn.innerHTML = '&#9654;'; }
+  });
+  audio.addEventListener('ended', () => { btn.innerHTML = '&#9654;'; fill.style.width='0%'; });
+  audio.addEventListener('timeupdate', () => {
+    if (!audio.duration) return;
+    const pct = (audio.currentTime / audio.duration) * 100;
+    fill.style.width = pct + '%';
+    timeEl.textContent = fmtTime(audio.currentTime);
+  });
+  audio.addEventListener('loadedmetadata', () => { timeEl.textContent = fmtTime(audio.duration); });
+  bar.addEventListener('click', e => {
+    const r = bar.getBoundingClientRect();
+    audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+  });
+  return wrap;
+}
+
+function makePlaceholder(ext, name) {
+  const icons = {
+    jpg:'📷', jpeg:'📷', png:'📷', gif:'📷', webp:'📷',
+    mp4:'🎬', mov:'🎬', avi:'🎬', mkv:'🎬',
+    opus:'🎵', ogg:'🎵', mp3:'🎵', aac:'🎵', m4a:'🎵',
+    arquivo:'📎'
+  };
+  const icon = icons[ext] || '📎';
+  const el = document.createElement('div');
+  el.className = 'media-placeholder';
+  el.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> ${icon} ${escHtml(name)}`;
+  return el;
+}
+
+/* ── lightbox ── */
+function openLightbox(type, url) {
+  const lb = $('lightbox');
+  const lc = $('lightbox-content');
+  lc.innerHTML = '';
+  if (type === 'img') {
+    const img = document.createElement('img'); img.src = url;
+    lc.appendChild(img);
+  }
+  lb.classList.add('active');
+}
+$('lightbox-close').addEventListener('click', () => $('lightbox').classList.remove('active'));
+$('lightbox').addEventListener('click', e => { if (e.target === $('lightbox')) $('lightbox').classList.remove('active'); });
+
+/* ── back button ── */
+$('back-btn').addEventListener('click', () => {
+  hide('chat-screen');
+  $('messages').innerHTML = '';
+  mySelf = ''; messages = []; zipFiles = {};
+  $('file-input').value = '';
+  show('upload-screen');
+});
+
+/* ── save button ── */
+$('save-btn').addEventListener('click', saveConversation);
+
+async function saveConversation() {
+  const btn = $('save-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Gerando…`;
+
+  try {
+    // 1. Converte todos os arquivos de mídia para base64 data URIs
+    const b64map = {};
+    for (const [name, bytes] of Object.entries(zipFiles)) {
+      const fname = name.includes('/') ? name.split('/').pop() : name;
+      const ext   = fname.split('.').pop().toLowerCase();
+      const mime  = getMime(ext);
+      const b64   = btoa(bytes.reduce((s, b) => s + String.fromCharCode(b), ''));
+      b64map[fname] = `data:${mime};base64,${b64}`;
+    }
+
+    // 2. Reconstrói o HTML das mensagens com data URIs em vez de blobs
+    function mediaUri(filename) {
+      return b64map[filename] || b64map[Object.keys(b64map).find(k => k === filename || k.endsWith('/' + filename))] || null;
+    }
+
+    function buildMsgHtml(msg) {
+      if (msg.type === 'sys') return `<div class="sys-msg"><span>${escHtml(msg.text)}</span></div>`;
+      const isMine = msg.sender === mySelf;
+      let rawText = msg.text.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, '').trim();
+      if (CRYPTO_RE.test(rawText)) return `<div class="sys-msg"><span>${escHtml(rawText)}</span></div>`;
+      const isEdited = EDITED_RE.test(rawText);
+      if (isEdited) rawText = rawText.replace(EDITED_RE,'').trim();
+      const att  = parseAttachment(rawText);
+      const loc  = LOC_RE.exec(rawText);
+      const omit = OMITTED_RE.test(rawText);
+      const side = isMine ? 'out' : 'in';
+      let inner  = '';
+      if (!isMine) inner += `<div class="sender">${escHtml(msg.sender.replace(/^~/,''))}</div>`;
+      if (att) {
+        const uri = mediaUri(att.filename);
+        const iExt = ['jpg','jpeg','png','gif','webp'];
+        const vExt = ['mp4','mov','avi','mkv'];
+        const aExt = ['opus','ogg','mp3','aac','m4a'];
+        if (uri && iExt.includes(att.ext)) {
+          inner += `<div class="bubble-media"><img src="${uri}" alt="${escHtml(att.filename)}" onclick="this.closest('.bubble-media').requestFullscreen&&this.closest('.bubble-media').requestFullscreen()"/></div>`;
+        } else if (uri && vExt.includes(att.ext)) {
+          inner += `<div class="bubble-media"><video src="${uri}" controls preload="metadata"></video></div>`;
+        } else if (uri && aExt.includes(att.ext)) {
+          inner += `<audio class="static-audio" src="${uri}" controls style="width:100%;margin:4px 0;border-radius:6px;"></audio>`;
+        } else if (uri) {
+          inner += `<a href="${uri}" download="${escHtml(att.filename)}" style="color:#53bdeb">📎 ${escHtml(att.filename)}</a>`;
+        } else {
+          inner += `<div class="media-placeholder">📎 ${escHtml(att.filename)}</div>`;
+        }
+      } else if (omit) {
+        inner += `<div class="media-placeholder">📎 Arquivo não exportado</div>`;
+      } else if (loc) {
+        inner += `<a class="location-link" href="${escHtml(loc[1])}" target="_blank">📍 Ver localização</a>`;
+      } else {
+        inner += `<div class="msg-text">${linkify(escHtml(rawText))}</div>`;
+      }
+      const editTag = isEdited ? `<span class="edited-tag">editada</span>` : '';
+      const tick    = isMine   ? `<span class="tick">✓✓</span>` : '';
+      inner += `<div class="meta">${editTag}<span class="time">${msg.time.slice(0,5)}</span>${tick}</div>`;
+      return `<div class="bubble-wrap ${side}"><div class="bubble">${inner}</div></div>`;
+    }
+
+    // 3. Monta o HTML completo de forma autocontida
+    let bodyHtml = '';
+    let lastDate = '';
+    for (const msg of messages) {
+      if (msg.date !== lastDate) {
+        lastDate = msg.date;
+        const [d,mo,y] = msg.date.split('/');
+        const dt   = new Date(+y,+mo-1,+d);
+        const diff = Math.round((new Date()-dt)/86400000);
+        const lbl  = diff===0?'Hoje':diff===1?'Ontem':dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+        bodyHtml  += `<div class="date-sep"><span>${lbl}</span></div>`;
+      }
+      bodyHtml += buildMsgHtml(msg);
+    }
+
+    const others = senders.filter(s=>s!==mySelf);
+    const title  = others.length?others[0].replace(/^~/,''):'Conversa';
+
+    // 4. CSS embutido (cópia do estilo principal, sem as telas de upload)
+    const css = document.querySelector('style').textContent;
+
+    const standalone = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Conversa – ${escHtml(title)}</title>
+<style>
+${css}
+body { justify-content: flex-start; }
+#chat-screen { display:flex !important; }
+#save-btn { display:none !important; }
+#back-btn { display:none !important; }
+.static-audio { filter: invert(0); }
+</style>
+</head>
+<body>
+<div id="chat-screen">
+  <div id="chat-header">
+    <div class="avatar">${escHtml(title[0].toUpperCase())}</div>
+    <div class="info">
+      <h3>${escHtml(title)}</h3>
+      <small>${senders.length} participantes</small>
+    </div>
+  </div>
+  <div id="messages">${bodyHtml}</div>
+</div>
+<script>
+  document.getElementById('messages').scrollTop = 9e9;
+<\/script>
+</body>
+</html>`;
+
+    // 5. Dispara download direto do HTML (mídia já embutida em base64)
+    const blob = new Blob([standalone], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `conversa-${title}.html`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch(e) {
+    alert('Erro ao salvar: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Salvar`;
+}
+
+/* ── utils ── */
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function linkify(s) {
+  return s.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+function fmtTime(sec) {
+  if (!isFinite(sec)) return '0:00';
+  const m = Math.floor(sec/60), s = Math.floor(sec%60);
+  return m + ':' + String(s).padStart(2,'0');
+}
+function getMime(ext) {
+  return {
+    jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp',
+    mp4:'video/mp4', mov:'video/quicktime', avi:'video/x-msvideo', mkv:'video/x-matroska',
+    opus:'audio/ogg; codecs=opus', ogg:'audio/ogg', mp3:'audio/mpeg', aac:'audio/aac', m4a:'audio/mp4',
+    pdf:'application/pdf'
+  }[ext] || 'application/octet-stream';
+}
+</script>
+</body>
+</html>

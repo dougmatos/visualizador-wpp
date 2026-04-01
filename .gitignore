@@ -1,0 +1,6 @@
+# ZIPs de conversa (dados pessoais)
+*.zip
+
+# Sistema
+.DS_Store
+Thumbs.db
